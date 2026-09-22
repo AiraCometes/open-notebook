@@ -312,18 +312,18 @@ RerankerConfig、Credential連携、Providerアダプター、設定GUI、接続
 
 Issueは本書の要件IDを参照し、依存関係の順に着手する。
 
-1. Enhanced基盤：要件・状態遷移・API契約・ADR
-2. Embedding状態モデルと進捗API
-3. EmbeddingJobキューとBatchワーカー
-4. Batchジョブの一時停止・再開・キャンセル・再試行
-5. Embeddingモード選択GUIと資料一覧バッジ
-6. Batch管理画面と検索可能状態の表示
-7. Hybrid Searchと未Embedding時フォールバック
-8. Reranker抽象化とProviderアダプター
-9. Reranker API設定GUIとCredential連携
-10. Reranker接続テストとモデル検出
-11. Reranker検索統合・タイムアウト・フォールバック
-12. 検索品質・性能評価とリリースドキュメント
+1. [Enhanced基盤：要件・状態遷移・API契約・ADR](https://github.com/AiraCometes/open-notebook/issues/1)
+2. [Embedding状態モデルと進捗API](https://github.com/AiraCometes/open-notebook/issues/3)
+3. [EmbeddingJobキューとBatchワーカー](https://github.com/AiraCometes/open-notebook/issues/9)
+4. [Batchジョブの一時停止・再開・キャンセル・再試行](https://github.com/AiraCometes/open-notebook/issues/7)
+5. [Embeddingモード選択GUIと資料一覧バッジ](https://github.com/AiraCometes/open-notebook/issues/8)
+6. [Batch管理画面と検索可能状態の表示](https://github.com/AiraCometes/open-notebook/issues/10)
+7. [Hybrid Searchと未Embedding時フォールバック](https://github.com/AiraCometes/open-notebook/issues/5)
+8. [Reranker抽象化とProviderアダプター](https://github.com/AiraCometes/open-notebook/issues/6)
+9. [Reranker API設定GUIとCredential連携](https://github.com/AiraCometes/open-notebook/issues/11)
+10. [Reranker接続テストとモデル検出](https://github.com/AiraCometes/open-notebook/issues/2)
+11. [Reranker検索統合・タイムアウト・フォールバック](https://github.com/AiraCometes/open-notebook/issues/12)
+12. [検索品質・性能評価とリリースドキュメント](https://github.com/AiraCometes/open-notebook/issues/4)
 
 ## 12. 参考資料
 
@@ -333,4 +333,3 @@ Issueは本書の要件IDを参照し、依存関係の順に着手する。
 - [大容量Embeddingの課題と内部バッチ対応](https://github.com/lfnovo/open-notebook/issues/536)
 - [Hybrid Searchの設計議論](https://github.com/lfnovo/open-notebook/issues/1036)
 - [Reranker対応の設計議論](https://github.com/lfnovo/open-notebook/issues/1087)
-
