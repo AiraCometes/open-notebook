@@ -1,331 +1,123 @@
-# Open Notebook Enhanced 要件定義書
+# Open Notebook Enhanced 要件定義マスター
 
-## 1. 文書の目的
+## 1. 目的と位置づけ
 
-本書は、[Open Notebook](https://github.com/lfnovo/open-notebook) を基盤に、
-大量資料のEmbedding処理と検索時の低遅延処理を分離し、Rerankerによる検索結果の
-再順位付けを追加する「Open Notebook Enhanced」の製品要件を定義する。
+本書は、[Open Notebook](https://github.com/lfnovo/open-notebook)を基盤とする
+「Open Notebook Enhanced」の製品全体の目的、境界、共通方針を定めるマスター文書。
+個別機能の詳細と受け入れ条件は、[タスク別要件一覧](open-notebook-enhanced/README.md)から
+各仕様書を参照する。
 
-本書を実装Issue、設計判断、受け入れテストの基準とする。実装上の都合で仕様を変更
-する場合は、本書または関連するIssueを先に更新する。
+実装Issueは対応するタスク仕様書を実行可能な単位として扱い、仕様変更はまず該当する
+タスク仕様書に反映する。複数タスクに影響する変更は本書も更新する。
 
-## 2. 背景と解決したい課題
+## 2. 解決する課題
 
-Open Notebookは資料をチャンク化し、Embeddingを生成してベクトル検索に利用する。
-一方で、大量の資料を一度に取り込む場合は、APIのレート制限、処理時間、失敗時の
-再実行、検索可能になるまでの状態が利用者から分かりにくくなりやすい。
+大量の資料を取り込むときのEmbedding処理と、利用者が検索を実行するときの処理を
+独立させる。処理状態をGUIで見えるようにし、Hybrid Searchと任意のRerankerで検索品質を
+高める。Reranker APIの設定・接続確認もGUIから行えるようにする。
 
-Enhancedでは、資料の搬入処理と検索処理を別のレーンとして扱う。
+## 3. 製品目標
 
-- **Batch処理**：大量資料をキューに積み、進捗を管理しながらバックグラウンドで処理する。
-- **通常処理**：少量の資料を優先度高く処理し、早く検索可能にする。
-- **検索処理**：Embedding処理の完了を待たず、検索可能なデータだけで応答する。
-- **Reranker**：検索候補を別モデルで再評価し、最終的な関連度順に並べ替える。
+1. 大量資料のEmbeddingを、通常処理とBatch処理に分けて管理する。
+2. 利用者が資料・ジョブごとのモード、進捗、失敗をGUIで判断できる。
+3. Embedding中も、利用可能なチャンクや全文検索で検索を継続できる。
+4. 全文検索とベクトル検索を組み合わせ、必要に応じてRerankerで順位を調整する。
+5. Reranker ProviderとAPI認証情報を設定画面から管理し、安全に接続テストできる。
+6. Open Notebookの既存データと主要な利用フローを保つ。
 
-## 3. 対象範囲
+## 4. 対象範囲
 
-### 3.1 今回の対象
+### 対象
 
-1. Embedding処理モード（通常、Batch、自動）の追加
-2. Embeddingジョブの状態・進捗・失敗・再試行管理
-3. Batch処理と通常処理をGUI上で明示
-4. Hybrid Search（全文検索とベクトル検索の統合）
-5. Rerankerの抽象化と検索パイプラインへの追加
-6. Reranker API設定GUI
-7. Rerankerの接続テスト、タイムアウト、検索結果へのフォールバック
-8. 評価用の検索品質・処理性能メトリクス
+- Embeddingモード（通常、Batch、自動）とEmbeddingジョブ管理
+- 状態・進捗表示、一時停止、再開、キャンセル、失敗分の再試行
+- Hybrid SearchとEmbedding未完了時のフォールバック
+- RerankerのProvider抽象化、API設定GUI、Credential連携、接続テスト
+- Rerankerを使った再順位付けと失敗時フォールバック
+- 検索品質と処理性能を確認する評価・運用ドキュメント
 
-### 3.2 今回の対象外
+### 対象外
 
-- 分散ワーカーを複数ホストへ展開する仕組み
-- マルチテナント向けの権限管理
-- Embeddingモデル自体の学習やファインチューニング
-- WebSocketによるリアルタイム通知（初期版はポーリング）
-- Reranker APIの全プロバイダーへの対応
-- 既存Open NotebookのChatやPodcast機能の大幅な仕様変更
+- 複数ホストにまたがる分散ワーカー、マルチテナント権限
+- Embeddingモデルの学習・ファインチューニング
+- 初期版でのWebSocket通知
+- すべてのReranker Providerへの対応
+- Chat、Podcastなど既存機能の大規模な仕様変更
 
-## 4. 用語
+## 5. 全体処理の考え方
+
+```text
+資料追加
+  └─ 通常 / Batch / 自動
+       └─ Embeddingジョブと進捗管理
+            └─ 完了済みデータから検索可能
+
+検索
+  └─ Vector / Full-text / Hybrid
+       └─ 任意でReranker
+            └─ 結果と実行状態をGUIに表示
+```
+
+ユーザー向けのBatchモードは、Embedding APIへ送る内部バッチサイズとは別の概念とする。
+Batchモードはジョブの優先度・スケジューリング・状態管理を指し、APIバッチサイズは
+各リクエストに含めるチャンク数を指す。
+
+## 6. 共通設計方針
+
+- 非同期のジョブ処理を使い、検索要求が大量Embeddingの完了を待たない構造にする。
+- ジョブと資料の状態を永続化し、再起動後に状態を確認・復旧できるようにする。
+- 既存のCredential機構を使い、API Keyを平文で返さず、ログにも出さない。
+- Rerankerは任意機能とし、未設定・タイムアウト・API障害時には元の検索結果で応答する。
+- API追加は後方互換を保ち、既存の検索・Ask・Notebookスコープを維持する。
+- 初期版の進捗更新はポーリングを基本とする。
+- データモデル、マイグレーション、Provider境界など構造的判断はADRに記録する。
+
+## 7. 用語
 
 | 用語 | 意味 |
 |---|---|
-| チャンク | 資料を検索可能な単位に分割したテキスト |
+| チャンク | 資料を検索用に分割したテキスト |
 | Embedding | テキストをベクトルへ変換した値 |
-| Embeddingジョブ | 1件以上の資料のEmbedding処理を管理する単位 |
-| APIバッチ | Embedding APIへ一度に送信するチャンク数 |
-| Batchモード | 大量資料を低優先度でバックグラウンド処理するユーザー向けモード |
-| Candidate | Vectorまたは全文検索で取得したReranker前の候補 |
-| Reranker | Queryと候補文書の関連度を再評価して順位を付けるモデル |
-| Hybrid Search | 全文検索とベクトル検索を統合した検索方式 |
+| Embeddingジョブ | 1件以上の資料のEmbedding実行を管理する単位 |
+| APIバッチ | Embedding APIへ一度に送るチャンク数 |
+| Batchモード | 大量資料のEmbeddingジョブをキュー管理する利用者向けモード |
+| Candidate | 初期検索で取得した再順位付け前の候補 |
+| Reranker | Queryと候補の関連度を評価し順位を付け直すモデル |
+| Hybrid Search | 全文検索とベクトル検索を統合する検索方式 |
 
-## 5. プロダクト要件
+## 8. タスク別仕様・Issue
 
-### REQ-001：Embeddingモードを選択できる
+各仕様書をタスクの詳細要件と受け入れ条件の一次参照先とする。
 
-資料追加時に、次のモードを選択できること。
+| Task | 仕様書 | GitHub Issue |
+|---|---|---|
+| T01 Enhanced共通契約とADR | [T01](open-notebook-enhanced/T01-foundation.md) | [#1](https://github.com/AiraCometes/open-notebook/issues/1) |
+| T02 Embedding状態モデルと進捗API | [T02](open-notebook-enhanced/T02-embedding-status-api.md) | [#3](https://github.com/AiraCometes/open-notebook/issues/3) |
+| T03 EmbeddingJobとBatchワーカー | [T03](open-notebook-enhanced/T03-batch-worker.md) | [#9](https://github.com/AiraCometes/open-notebook/issues/9) |
+| T04 ジョブ操作と再試行 | [T04](open-notebook-enhanced/T04-job-controls.md) | [#7](https://github.com/AiraCometes/open-notebook/issues/7) |
+| T05 Embeddingモード選択GUI | [T05](open-notebook-enhanced/T05-mode-ui.md) | [#8](https://github.com/AiraCometes/open-notebook/issues/8) |
+| T06 Batch管理・検索可能状態UI | [T06](open-notebook-enhanced/T06-batch-dashboard.md) | [#10](https://github.com/AiraCometes/open-notebook/issues/10) |
+| T07 Hybrid Search | [T07](open-notebook-enhanced/T07-hybrid-search.md) | [#5](https://github.com/AiraCometes/open-notebook/issues/5) |
+| T08 Reranker境界とProvider | [T08](open-notebook-enhanced/T08-reranker-providers.md) | [#6](https://github.com/AiraCometes/open-notebook/issues/6) |
+| T09 Reranker API設定GUI | [T09](open-notebook-enhanced/T09-reranker-settings-ui.md) | [#11](https://github.com/AiraCometes/open-notebook/issues/11) |
+| T10 接続テストとモデル検出 | [T10](open-notebook-enhanced/T10-reranker-test.md) | [#2](https://github.com/AiraCometes/open-notebook/issues/2) |
+| T11 検索統合とフォールバック | [T11](open-notebook-enhanced/T11-reranker-search.md) | [#12](https://github.com/AiraCometes/open-notebook/issues/12) |
+| T12 品質・性能評価と運用文書 | [T12](open-notebook-enhanced/T12-evaluation-docs.md) | [#4](https://github.com/AiraCometes/open-notebook/issues/4) |
 
-- `normal`：通常処理。優先度を高くして速やかに処理する。
-- `batch`：Batch処理。キューに積み、バックグラウンドで処理する。
-- `auto`：ファイル数、ファイルサイズ、チャンク数などの閾値で自動判定する。
-
-内部のAPIバッチサイズと、ユーザー向けのBatchモードは別の設定として扱う。
-
-### REQ-002：Embedding状態を追跡できる
-
-資料とジョブについて、少なくとも次の状態を保持すること。
-
-`not_started`、`queued`、`preparing`、`processing`、`completed`、`partial`、
-`failed`、`retry_waiting`、`cancelled`
-
-状態には、総チャンク数、完了数、失敗数、処理モード、利用モデル、モデルバージョン、
-最終エラーを関連付ける。
-
-### REQ-003：Batchジョブを操作できる
-
-ユーザーはBatchジョブを一覧で確認し、次の操作を実行できること。
-
-- 一時停止
-- 再開
-- キャンセル
-- 失敗チャンクのみ再試行
-- 優先度変更
-
-### REQ-004：Embedding未完了でも利用できる
-
-Embedding処理中の資料について、Embedding済みのチャンクは検索対象にする。
-Embeddingがない場合は、全文検索へフォールバックできること。
-
-検索結果が不完全な可能性がある場合は、GUI上で検索可能数と処理中の件数を示す。
-
-### REQ-005：Hybrid Searchを利用できる
-
-検索は、全文検索とベクトル検索の結果を統合できること。初期版の順位統合方式は
-Reciprocal Rank Fusion（RRF）とする。
-
-### REQ-006：Rerankerを任意で有効化できる
-
-Rerankerは検索パイプラインの後段に配置し、候補集合を再順位付けする。
-
-初期値の目安は次のとおり。
-
-- 候補取得数：50件
-- 最終結果数：8件
-- タイムアウト：3秒
-- Reranker失敗時：Hybrid Searchの順位で継続
-
-### REQ-007：Reranker APIをGUIから設定できる
-
-設定画面で、Rerankerの登録・編集・有効化・無効化・削除ができること。
-
-最低限、次の項目を設定できること。
-
-- 表示名
-- Provider
-- Model名
-- Base URL
-- API Key
-- Candidate Top K
-- Final Top N
-- Timeout
-- 失敗時のフォールバック有無
-
-API Keyは既存のCredential機構に暗号化して保存し、設定取得APIや画面へ平文で返さない。
-
-### REQ-008：Reranker APIをテストできる
-
-設定画面の「接続テスト」で、認証、モデル名、レスポンス形式、スコア取得、タイムアウトを
-検証できること。テスト結果には成功・失敗理由・レイテンシを表示する。
-
-### REQ-009：Reranker Providerを拡張できる
-
-RerankerはProvider固有の処理を検索本体から分離する。初期版では、少なくとも次を想定する。
-
-- Cohere系API
-- Jina AI系API
-- Custom HTTP（Cohere互換形式を基本とする）
-- ローカルモデル（後続対応可能な抽象化を用意する）
-
-### REQ-010：検索処理の方式を明示する
-
-検索画面では、次の方式をユーザーが確認または選択できること。
-
-- Vector only
-- Full-text only
-- Hybrid
-- Hybrid + Reranker
-
-検索結果には、実際に利用した方式と、Rerankerの成否を表示する。
-
-## 6. GUI要件
-
-### 6.1 資料追加画面
-
-Embedding方法として「通常処理」「Batch処理」「自動」を表示する。各選択肢に用途を
-1行で説明し、初期値は設定可能とする。
-
-### 6.2 資料一覧
-
-資料ごとに次を表示する。
-
-- `[通常]`、`[Batch]`、`[自動]`のモードバッジ
-- Embedding状態
-- `完了数 / 総チャンク数`
-- 失敗数
-- 再試行・キャンセルなどの操作
-
-### 6.3 Batch管理画面
-
-ジョブ全体について、処理中、待機中、完了、失敗の件数を表示する。ジョブ単位で
-一時停止、再開、キャンセルができること。
-
-### 6.4 検索画面
-
-検索方式、Rerankerの利用状況、検索可能なチャンク数、Embedding処理中の件数を表示する。
-Rerankerがタイムアウトまたは失敗した場合は、その事実を結果画面に表示する。
-
-### 6.5 Reranker設定画面
-
-設定済みモデルをカードまたは一覧で表示する。各設定について、API Keyはマスク表示し、
-接続状態、最終テスト日時、Provider、Model名を確認できること。
-
-## 7. データ/API要件
-
-### 7.1 Sourceへの追加項目
+## 9. 依存関係の概略
 
 ```text
-embedding_status
-embedding_mode
-embedding_progress
-embedding_total_chunks
-embedding_completed_chunks
-embedding_failed_chunks
-embedding_model
-embedding_version
-last_embedding_error
+T01 → T02 → T03 → T04
+             ├──→ T05 → T06
+             └──→ T07
+T01 → T08 → T09 → T10
+             └──→ T11 ← T07
+T02〜T11 → T12
 ```
 
-### 7.2 EmbeddingJob
+個別Issueの着手条件や並行可能な範囲は、各タスク仕様書で管理する。
 
-ジョブは、対象資料、処理モード、優先度、状態、進捗、APIバッチサイズ、並列数、
-開始時刻、完了時刻、エラーを保持する。
-
-### 7.3 RerankerConfig
-
-```text
-id
-name
-provider
-model
-base_url
-credential_id
-enabled
-timeout_seconds
-candidate_top_k
-final_top_n
-fallback_enabled
-```
-
-### 7.4 APIの初期案
-
-```text
-GET    /api/embedding-jobs
-GET    /api/embedding-jobs/{id}
-POST   /api/embedding-jobs/{id}/pause
-POST   /api/embedding-jobs/{id}/resume
-POST   /api/embedding-jobs/{id}/cancel
-POST   /api/embedding-jobs/{id}/retry-failed
-
-GET    /api/settings/rerankers
-POST   /api/settings/rerankers
-PATCH  /api/settings/rerankers/{id}
-DELETE /api/settings/rerankers/{id}
-POST   /api/settings/rerankers/{id}/test
-POST   /api/settings/rerankers/discover-models
-```
-
-既存APIとの互換性を壊さず、オプション項目として追加する。
-
-## 8. 非機能要件
-
-- Embeddingジョブは再起動後も状態を失わず、再開または失敗として復旧できる。
-- 一時的なAPIエラーは指数バックオフで再試行する。
-- API Key、Authorizationヘッダー、外部APIのレスポンスに含まれる秘密情報をログへ出さない。
-- Rerankerのタイムアウトで検索全体を失敗させない。
-- 同じモデル設定と同じチャンクに対する不要な再Embeddingを避ける。
-- 既存の検索、Ask、Notebookスコープ指定の動作を維持する。
-- 主要な状態遷移、検索統合、Rerankerフォールバックを自動テストする。
-
-## 9. 受け入れ基準
-
-### Batch処理
-
-1. 100件以上の資料をBatchとして投入できる。
-2. UIに待機中、処理中、完了、失敗の状態が表示される。
-3. 途中停止後に再開できる。
-4. 失敗チャンクのみを再試行できる。
-5. 処理中でも完了済みチャンクは検索できる。
-
-### 検索
-
-1. Vector only、Full-text only、Hybridを切り替えられる。
-2. Embedding未完了時に全文検索へフォールバックできる。
-3. Notebookスコープ指定が検索方式変更後も維持される。
-
-### Reranker
-
-1. API KeyをGUIから登録できる。
-2. API Keyが平文で画面やAPIレスポンスに表示されない。
-3. 接続テストの結果とレイテンシを確認できる。
-4. Reranker有効時に候補順位が再評価される。
-5. タイムアウト・認証エラー時にHybrid結果へフォールバックする。
-
-## 10. 段階的な実装計画
-
-### Phase 0：基盤と契約
-
-要件、状態モデル、API契約、ADR、テスト方針を固定する。
-
-### Phase 1：Embedding状態の可視化
-
-Sourceの状態、進捗API、資料一覧のバッジを実装する。
-
-### Phase 2：EmbeddingJobとBatch処理
-
-ジョブキュー、優先度、一時停止、再開、キャンセル、失敗再試行を実装する。
-
-### Phase 3：EmbeddingモードGUI
-
-資料追加時の通常・Batch・自動選択と、Batch管理画面を実装する。
-
-### Phase 4：Hybrid Search
-
-全文検索とベクトル検索の統合、未Embedding時のフォールバックを実装する。
-
-### Phase 5：Reranker設定と接続テスト
-
-RerankerConfig、Credential連携、Providerアダプター、設定GUI、接続テストを実装する。
-
-### Phase 6：Reranker検索統合と評価
-
-候補取得、再順位付け、タイムアウト、フォールバック、品質・性能評価を実装する。
-
-## 11. 実装Issue一覧
-
-Issueは本書の要件IDを参照し、依存関係の順に着手する。
-
-1. [Enhanced基盤：要件・状態遷移・API契約・ADR](https://github.com/AiraCometes/open-notebook/issues/1)
-2. [Embedding状態モデルと進捗API](https://github.com/AiraCometes/open-notebook/issues/3)
-3. [EmbeddingJobキューとBatchワーカー](https://github.com/AiraCometes/open-notebook/issues/9)
-4. [Batchジョブの一時停止・再開・キャンセル・再試行](https://github.com/AiraCometes/open-notebook/issues/7)
-5. [Embeddingモード選択GUIと資料一覧バッジ](https://github.com/AiraCometes/open-notebook/issues/8)
-6. [Batch管理画面と検索可能状態の表示](https://github.com/AiraCometes/open-notebook/issues/10)
-7. [Hybrid Searchと未Embedding時フォールバック](https://github.com/AiraCometes/open-notebook/issues/5)
-8. [Reranker抽象化とProviderアダプター](https://github.com/AiraCometes/open-notebook/issues/6)
-9. [Reranker API設定GUIとCredential連携](https://github.com/AiraCometes/open-notebook/issues/11)
-10. [Reranker接続テストとモデル検出](https://github.com/AiraCometes/open-notebook/issues/2)
-11. [Reranker検索統合・タイムアウト・フォールバック](https://github.com/AiraCometes/open-notebook/issues/12)
-12. [検索品質・性能評価とリリースドキュメント](https://github.com/AiraCometes/open-notebook/issues/4)
-
-## 12. 参考資料
+## 10. 参考資料
 
 - [Open Notebook](https://github.com/lfnovo/open-notebook)
 - [Embeddingコマンド](https://github.com/lfnovo/open-notebook/blob/main/commands/embedding_commands.py)
