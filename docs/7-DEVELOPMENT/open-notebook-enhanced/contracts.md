@@ -531,7 +531,8 @@ provider 必須項目欠落、範囲外数値）。
   既存テーブルへの変更は `option<>` フィールドの追加のみ（既存行・既存コードを壊さない）。
 - 移行バックフィル: Embedding行がある資料 → `completed` + 実件数、
   実行中 command を持つ資料 → `processing`、それ以外 → `not_started`。
-  `requested_mode`/`resolved_mode` は `normal`（従来挙動）で埋める。
+  `requested_mode`/`resolved_mode` は、従来経路でEmbedding済みの資料のみ
+  `normal` で埋め、それ以外は未設定（null）とする。
 - APIは追加のみ（新パス・新任意フィールド・Literal の新値）。既存クライアントは無変更で動く。
 - マイグレーションの単位・`_down`・採番は ADR-006 の方針を継承する。
 
